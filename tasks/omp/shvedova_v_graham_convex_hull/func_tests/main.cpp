@@ -280,3 +280,25 @@ TEST(shvedova_v_graham_convex_hull_omp, random_64) {
 
   EXPECT_EQ(dst, seq_dst);
 }
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_special_case) {
+  std::vector<double> src = {0.0, 0.0, -1.0, -2.0, -2.0, -4.0, 1.0, -3.0, 2.0, -6.0};
+
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+  ExecuteTask(data);
+
+  std::set<std::pair<double, double>> expected_points = {{0.0, 0.0}, {2.0, -6.0}, {-2.0, -4.0}};
+
+  std::set<std::pair<double, double>> result_points;
+  for (int i = 0; i < hull_count; ++i) {
+    result_points.insert({dst[2 * i], dst[(2 * i) + 1]});
+  }
+
+  ASSERT_EQ(result_points.size(), expected_points.size());
+  for (const auto& point : expected_points) {
+    ASSERT_TRUE(result_points.find(point) != result_points.end());
+  }
+}
