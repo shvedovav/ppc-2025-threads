@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -57,7 +58,6 @@ TEST(shvedova_v_graham_convex_hull_seq, convex_square_inner) {
 
   ExecuteTask(data);
 
-  // Ожидается, что внутренняя точка исключена, поэтому оболочка состоит из 4 точек
   std::vector<double> exp = {0, 0, 2, 0, 2, 2, 0, 2};
   EXPECT_EQ(hull_count, static_cast<int>(exp.size() / 2));
   EXPECT_EQ(std::vector<double>(dst.begin(), dst.begin() + exp.size()), exp);
@@ -171,4 +171,90 @@ TEST(shvedova_v_graham_convex_hull_seq, PentagonWithPointsInside) {
   };
 
   EXPECT_EQ(std::vector<double>(dst.begin(), dst.begin() + exp.size()), exp);
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_identical_points) {
+  std::vector<double> src = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+
+  shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential task(data);
+  ASSERT_FALSE(task.Validation());
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_collinear_diagonal) {
+  std::vector<double> src = {0.0, 0.0, 1.0, 1.0, 2.0, 2.0, 3.0, 3.0, 4.0, 4.0};
+  int hull_count = 0;
+  std::vector<double> dst(src.size(), 0.0);
+  auto data = BuildTaskData(src, dst, hull_count);
+  shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential task(data);
+  ASSERT_FALSE(task.Validation());
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_collinear_vertical) {
+  std::vector<double> src = {0.0, 0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 4.0};
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+
+  shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential task(data);
+  ASSERT_FALSE(task.Validation());
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_collinear_horizontal) {
+  std::vector<double> src = {0.0, 0.0, 1.0, 0.0, 2.0, 0.0, 3.0, 0.0, 4.0, 0.0};
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+
+  shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential task(data);
+  ASSERT_FALSE(task.Validation());
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_invalid_too_few) {
+  std::vector<double> src = {0.0, 0.0, 1.0, 1.0};
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+
+  shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential task(data);
+  EXPECT_FALSE(task.ValidationImpl());
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_invalid_odd_coords) {
+  std::vector<double> src = {0.0, 0.0, 1.0};
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+
+  shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential task(data);
+  EXPECT_FALSE(task.ValidationImpl());
+}
+
+TEST(shvedova_v_graham_convex_hull_seq, convex_special_case) {
+  std::vector<double> src = {0.0, 0.0, -1.0, -2.0, -2.0, -4.0, 1.0, -3.0, 2.0, -6.0};
+
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+  ExecuteTask(data);
+
+  std::set<std::pair<double, double>> expected_points = {{0.0, 0.0}, {2.0, -6.0}, {-2.0, -4.0}};
+
+  std::set<std::pair<double, double>> result_points;
+  for (int i = 0; i < hull_count; ++i) {
+    result_points.insert({dst[2 * i], dst[(2 * i) + 1]});
+  }
+
+  ASSERT_EQ(result_points.size(), expected_points.size());
+  for (const auto& point : expected_points) {
+    ASSERT_TRUE(result_points.find(point) != result_points.end());
+  }
 }
