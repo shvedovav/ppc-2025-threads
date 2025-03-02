@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <set>
 #include <utility>
 #include <vector>
 
