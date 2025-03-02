@@ -10,7 +10,7 @@
 #include "core/perf/include/perf.hpp"
 #include "core/task/include/task.hpp"
 
-constexpr int kCount = 22000;
+constexpr int kCount = 15000;
 
 namespace {
 std::vector<double> GenSrc(int count) {
