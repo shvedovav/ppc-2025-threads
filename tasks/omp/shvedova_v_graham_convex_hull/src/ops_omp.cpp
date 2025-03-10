@@ -67,10 +67,12 @@ void GrahamConvexHullOMP::PerformSort() {  // NOLINT(*cognit*)
     };
     const auto ang1 = calc_ang(p0, p1);
     const auto ang2 = calc_ang(p0, p2);
-    return (ang1 < ang2) || ((ang1 > ang2) ? false
-                                           : (std::pow(p1[0] - p0[0], 2) + std::pow(p1[1] - p0[1], 2) -
-                                                  std::pow(p2[0] - p0[0], 2) - std::pow(p2[1] - p0[1], 2) >
-                                              0));
+    double exp1 = std::pow(p1[0] - p0[0], 2);
+    double exp2 = std::pow(p1[1] - p0[1], 2);
+    double exp3 = std::pow(p2[0] - p0[0], 2);
+    double exp4 = std::pow(p2[1] - p0[1], 2);
+
+    return (ang1 < ang2) || ((ang1 > ang2) ? false : (exp1 + exp2 - exp3 - exp4 > 0));
   };
 
   const auto pivot = *std::ranges::min_element(input_, [](auto &a, auto &b) { return a[1] < b[1]; });
@@ -165,10 +167,12 @@ void GrahamConvexHullSequential::PerformSort() {  // NOLINT(*cognit*)
     };
     const auto ang1 = calc_ang(p0, p1);
     const auto ang2 = calc_ang(p0, p2);
-    return (ang1 < ang2) || ((ang1 > ang2) ? false
-                                           : (std::pow(p1[0] - p0[0], 2) + std::pow(p1[1] - p0[1], 2) -
-                                                  std::pow(p2[0] - p0[0], 2) - std::pow(p2[1] - p0[1], 2) >
-                                              0));
+    double exp1 = std::pow(p1[0] - p0[0], 2);
+    double exp2 = std::pow(p1[1] - p0[1], 2);
+    double exp3 = std::pow(p2[0] - p0[0], 2);
+    double exp4 = std::pow(p2[1] - p0[1], 2);
+
+    return (ang1 < ang2) || ((ang1 > ang2) ? false : (exp1 + exp2 - exp3 - exp4 > 0));
   };
 
   const auto pivot = *std::ranges::min_element(input_, [](auto &a, auto &b) { return a[1] < b[1]; });
