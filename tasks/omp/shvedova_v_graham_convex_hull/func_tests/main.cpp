@@ -280,3 +280,28 @@ TEST(shvedova_v_graham_convex_hull_omp, random_64) {
 
   EXPECT_EQ(dst, seq_dst);
 }
+
+TEST(shvedova_v_graham_convex_hull_omp, convex_circle) {
+  constexpr int kNumPoints = 20;
+  constexpr double kRadius = 5.0;
+
+  std::vector<double> src;
+  src.reserve(kNumPoints * 2);
+
+  for (int i = 0; i < kNumPoints; ++i) {
+    double angle = (2 * M_PI * i) / kNumPoints;
+    src.push_back(kRadius * cos(angle));
+    src.push_back(kRadius * sin(angle));
+  }
+
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+  ExecuteTask(data);
+
+  EXPECT_EQ(hull_count, kNumPoints);
+  for (int i = 0; i < hull_count; ++i) {
+    EXPECT_NEAR((dst[2 * i] * dst[2 * i]) + (dst[(2 * i) + 1] * dst[(2 * i) + 1]), kRadius * kRadius, 1e-6);
+  }
+}
