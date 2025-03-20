@@ -310,3 +310,22 @@ TEST(shvedova_v_graham_convex_hull_omp, convex_circle) {
     EXPECT_NEAR((dst[2 * i] * dst[2 * i]) + (dst[(2 * i) + 1] * dst[(2 * i) + 1]), kRadius * kRadius, 1e-6);
   }
 }
+
+TEST(shvedova_v_graham_convex_hull_omp, convex_star) {
+  std::vector<double> src = {
+      0.0, 3.0, -2.0, 1.0, -3.0, -2.0, 0.0, -1.0, 3.0, -2.0, 2.0, 1.0,
+  };
+
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+  ExecuteTask(data);
+
+  std::vector<double> exp = {
+      -3.0, -2.0, 3.0, -2.0, 2.0, 1.0, 0.0, 3.0, -2.0, 1.0,
+  };
+
+  EXPECT_EQ(hull_count, static_cast<int>(exp.size() / 2));
+  EXPECT_EQ(std::vector<double>(dst.begin(), dst.begin() + exp.size()), exp);
+}
