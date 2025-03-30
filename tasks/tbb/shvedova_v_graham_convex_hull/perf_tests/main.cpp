@@ -1,10 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <random>
 #include <set>
+#include <utility>
 #include <vector>
 
 #include "../include/ops_tbb.hpp"
