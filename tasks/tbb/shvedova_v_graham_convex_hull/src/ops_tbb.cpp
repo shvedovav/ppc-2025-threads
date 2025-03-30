@@ -30,6 +30,52 @@ bool CheckCollinearity(std::span<double> raw_points) {
   }
   return true;
 }
+
+double CalculateAngle(const Point &o, const Point &p) {
+  const auto dx = p[0] - o[0];
+  const auto dy = p[1] - o[1];
+
+  if (dx == 0. && dy == 0.) {
+    return -1.;
+  }
+  const auto positive_dy = (dx >= 0) ? dy / (dx + dy) : 1 - (dx / (-dx + dy));
+  const auto negative_dy = (dx < 0) ? 2 - (dy / (-dx - dy)) : 3 + (dx / (dx - dy));
+  return (dy >= 0) ? positive_dy : negative_dy;
+}
+
+bool ComparePoints(const Point &p0, const Point &p1, const Point &p2) {
+  const auto ang1 = CalculateAngle(p0, p1);
+  const auto ang2 = CalculateAngle(p0, p2);
+  double exp1 = std::pow(p1[0] - p0[0], 2);
+  double exp2 = std::pow(p1[1] - p0[1], 2);
+  double exp3 = std::pow(p2[0] - p0[0], 2);
+  double exp4 = std::pow(p2[1] - p0[1], 2);
+
+  return (ang1 < ang2) || ((ang1 > ang2) ? false : (exp1 + exp2 - exp3 - exp4 > 0));
+}
+
+void ParallelSortStep(oneapi::tbb::task_arena &arena, std::vector<Point> &input, const Point &pivot, int points_count,
+                      bool even_step) {
+  const int shift = even_step ? 0 : -1;
+  const int revshift = even_step ? -1 : 0;
+
+  arena.execute([&] {
+    oneapi::tbb::parallel_for(
+        oneapi::tbb::blocked_range<int>(1, points_count + shift,
+                                        (points_count + shift - 1) / tbb::this_task_arena::max_concurrency()),
+        [&](const tbb::blocked_range<int> &r) {
+          int begin = r.begin();
+          if ((begin % 2) == 0) {
+            begin++;
+          }
+          for (int i = begin; i < r.end(); i += 2) {
+            if (ComparePoints(pivot, input[i - shift], input[i + revshift])) {
+              std::swap(input[i], input[i - (even_step ? 1 : -1)]);
+            }
+          }
+        });
+  });
+}
 }  // namespace
 
 namespace shvedova_v_graham_convex_hull_tbb {
@@ -58,52 +104,13 @@ bool GrahamConvexHullTBB::PreProcessingImpl() {
   return true;
 }
 
-void GrahamConvexHullTBB::PerformSort() {  // NOLINT(*cognit*)
-  const auto cmp = [](const Point &p0, const Point &p1, const Point &p2) {
-    const auto calc_ang = [](const Point &o, const Point &p) {
-      const auto dx = p[0] - o[0];
-      const auto dy = p[1] - o[1];
-
-      if (dx == 0. && dy == 0.) {
-        return -1.;
-      }
-      const auto positive_dy = (dx >= 0) ? dy / (dx + dy) : 1 - (dx / (-dx + dy));
-      const auto negative_dy = (dx < 0) ? 2 - (dy / (-dx - dy)) : 3 + (dx / (dx - dy));
-      return (dy >= 0) ? positive_dy : negative_dy;
-    };
-    const auto ang1 = calc_ang(p0, p1);
-    const auto ang2 = calc_ang(p0, p2);
-    double exp1 = std::pow(p1[0] - p0[0], 2);
-    double exp2 = std::pow(p1[1] - p0[1], 2);
-    double exp3 = std::pow(p2[0] - p0[0], 2);
-    double exp4 = std::pow(p2[1] - p0[1], 2);
-
-    return (ang1 < ang2) || ((ang1 > ang2) ? false : (exp1 + exp2 - exp3 - exp4 > 0));
-  };
-
+void GrahamConvexHullTBB::PerformSort() {
   oneapi::tbb::task_arena arena(ppc::util::GetPPCNumThreads());
-
   const auto pivot = *std::ranges::min_element(input_, [](auto &a, auto &b) { return a[1] < b[1]; });
+
   for (int pt = 0; pt < points_count_; pt++) {
-    const bool ev = pt % 2 == 0;
-    const int shift = ev ? 0 : -1;
-    const int revshift = ev ? -1 : 0;
-    arena.execute([&] {
-      oneapi::tbb::parallel_for(
-          oneapi::tbb::blocked_range<int>(1, points_count_ + shift,
-                                          (points_count_ + shift - 1) / tbb::this_task_arena::max_concurrency()),
-          [&](const tbb::blocked_range<int> &r) {
-            int begin = r.begin();
-            if ((begin % 2) == 0) {
-              begin++;
-            }
-            for (int i = begin; i < r.end(); i += 2) {
-              if (cmp(pivot, input_[i - shift], input_[i + revshift])) {
-                std::swap(input_[i], input_[i - (ev ? 1 : -1)]);
-              }
-            }
-          });
-    });
+    const bool even_step = pt % 2 == 0;
+    ParallelSortStep(arena, input_, pivot, points_count_, even_step);
   }
 }
 
