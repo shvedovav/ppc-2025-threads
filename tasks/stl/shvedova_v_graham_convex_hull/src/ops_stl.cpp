@@ -1,15 +1,11 @@
 #include "../include/ops_stl.hpp"
 
 #include <algorithm>
-#include <barrier>
 #include <cmath>
 #include <cstddef>
 #include <span>
-#include <thread>
 #include <utility>
 #include <vector>
-
-#include "core/util/include/util.hpp"
 
 namespace {
 
@@ -30,50 +26,20 @@ bool CheckCollinearity(std::span<double> raw_points) {
   return true;
 }
 
-double CalcAngle(const Point &o, const Point &p) {
-  const auto dx = p[0] - o[0];
-  const auto dy = p[1] - o[1];
-
-  if (dx == 0. && dy == 0.) {
-    return -1.;
-  }
-
-  const auto positive_dy = (dx >= 0) ? dy / (dx + dy) : 1 - (dx / (-dx + dy));
-  const auto negative_dy = (dx < 0) ? 2 - (dy / (-dx - dy)) : 3 + (dx / (dx - dy));
-  return (dy >= 0) ? positive_dy : negative_dy;
+double CrossProduct(const Point &p0, const Point &p1, const Point &p2) {
+  return ((p1[0] - p0[0]) * (p2[1] - p0[1])) - ((p1[1] - p0[1]) * (p2[0] - p0[0]));
 }
 
 bool ComparePoints(const Point &p0, const Point &p1, const Point &p2) {
-  const auto ang1 = CalcAngle(p0, p1);
-  const auto ang2 = CalcAngle(p0, p2);
-
-  if (ang1 < ang2) {
-    return true;
+  const auto dx1 = p1[0] - p0[0];
+  const auto dy1 = p1[1] - p0[1];
+  const auto dx2 = p2[0] - p0[0];
+  const auto dy2 = p2[1] - p0[1];
+  const auto cross = (dx1 * dy2) - (dy1 * dx2);
+  if (std::abs(cross) < 1e-9) {
+    return (dx1 * dx1 + dy1 * dy1) < (dx2 * dx2 + dy2 * dy2);
   }
-  if (ang1 > ang2) {
-    return false;
-  }
-
-  const double d1 = std::pow(p1[0] - p0[0], 2) + std::pow(p1[1] - p0[1], 2);
-  const double d2 = std::pow(p2[0] - p0[0], 2) + std::pow(p2[1] - p0[1], 2);
-  return d1 > d2;
-}
-
-void SortChunk(int begin, int end, int points_count, const Point &pivot, std::vector<Point> &input,
-               std::barrier<> &bar) {
-  for (int pt = 0; pt < points_count; ++pt) {
-    const bool even = pt % 2 == 0;
-    const int shift = even ? 0 : -1;
-    const int revshift = even ? -1 : 0;
-
-    for (int i = begin; i < end + (shift * static_cast<int>(end == points_count)); i += 2) {
-      if (ComparePoints(pivot, input[i - shift], input[i + revshift])) {
-        std::swap(input[i], input[i - (even ? 1 : -1)]);
-      }
-    }
-
-    bar.arrive_and_wait();
-  }
+  return cross > 0;
 }
 
 }  // namespace
@@ -91,65 +57,32 @@ bool GrahamConvexHullSTL::ValidationImpl() {
 bool GrahamConvexHullSTL::PreProcessingImpl() {
   points_count_ = static_cast<int>(task_data->inputs_count[0] / 2);
   input_.resize(points_count_, Point{});
-
   auto *p_src = reinterpret_cast<double *>(task_data->inputs[0]);
   for (int i = 0; i < points_count_ * 2; i += 2) {
     input_[i / 2][0] = p_src[i];
     input_[i / 2][1] = p_src[i + 1];
   }
-
   res_.clear();
   res_.reserve(points_count_);
-
   return true;
 }
 
 void GrahamConvexHullSTL::PerformSort() {
-  const int thread_count = std::min(points_count_, ppc::util::GetPPCNumThreads());
-  std::vector<std::thread> threads(thread_count);
-  std::barrier bar(thread_count);
-
-  const int delta = (points_count_ + thread_count - 1) / thread_count;
   const Point pivot = *std::ranges::min_element(input_, [](const Point &a, const Point &b) { return a[1] < b[1]; });
-
-  for (int tn = 0; tn < thread_count; ++tn) {
-    threads[tn] = std::thread([&, tn] {
-      int begin = tn * delta;
-      if (begin % 2 == 0) {
-        ++begin;
-      }
-      const int end = std::min((tn + 1) * delta, points_count_);
-      SortChunk(begin, end, points_count_, pivot, input_, bar);
-    });
-  }
-
-  for (auto &t : threads) {
-    t.join();
-  }
+  std::ranges::sort(input_.begin(), input_.end(),
+                    [&](const Point &p1, const Point &p2) { return ComparePoints(pivot, p1, p2); });
 }
 
 bool GrahamConvexHullSTL::RunImpl() {
   PerformSort();
-
-  for (int i = 0; i < 3; i++) {
-    res_.push_back(input_[i]);
-  }
-
-  for (int i = 3; i < points_count_; ++i) {
-    while (res_.size() > 1) {
-      const auto &pv = res_.back();
-      const auto dx1 = res_.rbegin()[1][0] - pv[0];
-      const auto dy1 = res_.rbegin()[1][1] - pv[1];
-      const auto dx2 = input_[i][0] - pv[0];
-      const auto dy2 = input_[i][1] - pv[1];
-      if (dx1 * dy2 < dy1 * dx2) {
-        break;
-      }
+  res_.push_back(input_[0]);
+  res_.push_back(input_[1]);
+  for (int i = 2; i < points_count_; ++i) {
+    while (res_.size() > 1 && CrossProduct(res_[res_.size() - 2], res_.back(), input_[i]) <= 0) {
       res_.pop_back();
     }
     res_.push_back(input_[i]);
   }
-
   return true;
 }
 
