@@ -1,6 +1,7 @@
 #include "../include/ops_tbb.hpp"
 
 #include <oneapi/tbb/task_arena.h>
+#include <tbb/parallel_sort.h>
 #include <tbb/tbb.h>
 
 #include <algorithm>
