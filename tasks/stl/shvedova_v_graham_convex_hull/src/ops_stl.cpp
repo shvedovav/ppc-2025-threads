@@ -3,12 +3,14 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iterator>
 #include <span>
-#include <utility>
+#include <thread>
 #include <vector>
 
-namespace {
+#include "core/util/include/util.hpp"
 
+namespace {
 bool CheckCollinearity(std::span<double> raw_points) {
   const auto points_count = raw_points.size() / 2;
   if (points_count < 3) {
@@ -25,11 +27,6 @@ bool CheckCollinearity(std::span<double> raw_points) {
   }
   return true;
 }
-
-double CrossProduct(const Point &p0, const Point &p1, const Point &p2) {
-  return ((p1[0] - p0[0]) * (p2[1] - p0[1])) - ((p1[1] - p0[1]) * (p2[0] - p0[0]));
-}
-
 bool ComparePoints(const Point &p0, const Point &p1, const Point &p2) {
   const auto dx1 = p1[0] - p0[0];
   const auto dy1 = p1[1] - p0[1];
@@ -41,7 +38,9 @@ bool ComparePoints(const Point &p0, const Point &p1, const Point &p2) {
   }
   return cross > 0;
 }
-
+double CrossProduct(const Point &p0, const Point &p1, const Point &p2) {
+  return ((p1[0] - p0[0]) * (p2[1] - p0[1])) - ((p1[1] - p0[1]) * (p2[0] - p0[0]));
+}
 }  // namespace
 
 namespace shvedova_v_graham_convex_hull_stl {
@@ -57,20 +56,65 @@ bool GrahamConvexHullSTL::ValidationImpl() {
 bool GrahamConvexHullSTL::PreProcessingImpl() {
   points_count_ = static_cast<int>(task_data->inputs_count[0] / 2);
   input_.resize(points_count_, Point{});
+
   auto *p_src = reinterpret_cast<double *>(task_data->inputs[0]);
   for (int i = 0; i < points_count_ * 2; i += 2) {
     input_[i / 2][0] = p_src[i];
     input_[i / 2][1] = p_src[i + 1];
   }
+
   res_.clear();
   res_.reserve(points_count_);
+
   return true;
 }
 
 void GrahamConvexHullSTL::PerformSort() {
-  const Point pivot = *std::ranges::min_element(input_, [](const Point &a, const Point &b) { return a[1] < b[1]; });
-  std::ranges::sort(input_.begin(), input_.end(),
-                    [&](const Point &p1, const Point &p2) { return ComparePoints(pivot, p1, p2); });
+  const auto pivot = *std::ranges::min_element(input_, [](auto &a, auto &b) { return a[1] < b[1]; });
+
+  const int threadsnum = std::min(points_count_, ppc::util::GetPPCNumThreads());
+  const int perthread = points_count_ / threadsnum;
+  const int unfit = points_count_ % threadsnum;
+
+  std::vector<std::span<Point>> fragments(threadsnum);
+  auto it = input_.begin();
+  for (int i = 0; i < threadsnum; i++) {
+    auto nit = std::next(it, perthread + ((i < unfit) ? 1 : 0));
+    fragments[i] = std::span{it, nit};
+    it = nit;
+  }
+
+  const auto comp = [&](const Point &p1, const Point &p2) { return ComparePoints(pivot, p1, p2); };
+  const auto merge = [&](std::span<Point> &primary, std::span<Point> &follower) {
+    std::inplace_merge(primary.begin(), follower.begin(), follower.end(), comp);
+    primary = std::span{primary.begin(), follower.end()};
+  };
+
+  std::vector<std::thread> ts(threadsnum);
+  for (std::size_t i = 0; i < ts.size(); i++) {
+    ts[i] = std::thread([&, i] { std::ranges::sort(fragments[i], comp); });
+  }
+  std::ranges::for_each(ts, [](auto &t) { t.join(); });
+
+  for (std::size_t i = 1, iter = threadsnum; iter > 1; i *= 2, iter /= 2) {
+    const auto factor = iter / 2;
+    if (fragments.front().size() < 32) {
+      for (std::size_t k = 0; k < static_cast<std::size_t>(factor); ++k) {
+        merge(fragments[2 * i * k], fragments[(2 * i * k) + i]);
+      }
+    } else {
+      ts.resize(factor);
+      for (std::size_t m = 0; m < factor; m++) {
+        ts[m] = std::thread([&](std::size_t k) { merge(fragments[2 * i * k], fragments[(2 * i * k) + i]); }, m);
+      }
+      std::ranges::for_each(ts, [](auto &t) { t.join(); });
+    }
+    if ((iter / 2) == 1) {
+      merge(fragments.front(), fragments.back());
+    } else if ((iter / 2) % 2 != 0) {
+      merge(fragments[2 * i * (factor - 2)], fragments[2 * i * (factor - 1)]);
+    }
+  }
 }
 
 bool GrahamConvexHullSTL::RunImpl() {
