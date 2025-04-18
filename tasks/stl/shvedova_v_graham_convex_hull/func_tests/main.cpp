@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <cstdint>
 #include <memory>
 #include <random>
@@ -280,4 +281,48 @@ TEST(shvedova_v_graham_convex_hull_stl, random_64) {
   ExecuteTask<shvedova_v_graham_convex_hull_seq::GrahamConvexHullSequential>(seq_data);
 
   EXPECT_EQ(dst, seq_dst);
+}
+
+TEST(shvedova_v_graham_convex_hull_stl, convex_circle) {
+  constexpr int kNumPoints = 20;
+  constexpr double kRadius = 5.0;
+
+  std::vector<double> src;
+  src.reserve(kNumPoints * 2);
+
+  for (int i = 0; i < kNumPoints; ++i) {
+    double angle = (2 * M_PI * i) / kNumPoints;
+    src.push_back(kRadius * std::cos(angle));
+    src.push_back(kRadius * std::sin(angle));
+  }
+
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+  ExecuteTask(data);
+
+  EXPECT_EQ(hull_count, kNumPoints);
+  for (int i = 0; i < hull_count; ++i) {
+    EXPECT_NEAR((dst[2 * i] * dst[2 * i]) + (dst[(2 * i) + 1] * dst[(2 * i) + 1]), kRadius * kRadius, 1e-6);
+  }
+}
+
+TEST(shvedova_v_graham_convex_hull_stl, convex_star) {
+  std::vector<double> src = {
+      0.0, 3.0, -2.0, 1.0, -3.0, -2.0, 0.0, -1.0, 3.0, -2.0, 2.0, 1.0,
+  };
+
+  std::vector<double> dst(src.size(), 0.0);
+  int hull_count = 0;
+
+  auto data = BuildTaskData(src, dst, hull_count);
+  ExecuteTask(data);
+
+  std::vector<double> exp = {
+      -3.0, -2.0, 3.0, -2.0, 2.0, 1.0, 0.0, 3.0, -2.0, 1.0,
+  };
+
+  EXPECT_EQ(hull_count, static_cast<int>(exp.size() / 2));
+  EXPECT_EQ(std::vector<double>(dst.begin(), dst.begin() + exp.size()), exp);
 }
