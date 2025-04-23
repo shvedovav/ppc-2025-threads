@@ -97,7 +97,7 @@ void GrahamConvexHullOMP::PerformSort() {
   for (std::size_t i = 1, iter = threadsnum; iter > 1; i *= 2, iter /= 2) {
     const auto factor = iter / 2;
 #pragma omp parallel for if (fragments.front().size() > 24)
-    for (std::size_t k = 0; k < static_cast<std::size_t>(factor); ++k) {
+    for (int k = 0; k < static_cast<int>(factor); ++k) {
       merge(fragments[2 * i * k], fragments[(2 * i * k) + i]);
     }
     if ((iter / 2) == 1) {
