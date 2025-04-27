@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include "../include/ops_stl.hpp"
@@ -24,12 +27,32 @@ std::vector<double> GenSrc(int count) {
   }
   return points;
 }
+
+bool VerifyHullBasic(const std::vector<double>& points, const std::vector<double>& hull, int hull_size) {
+  if (hull_size < 3) {
+    return false;
+  }
+
+  std::set<std::pair<double, double>> original_points;
+  for (size_t i = 0; i < points.size(); i += 2) {
+    original_points.emplace(points[i], points[i + 1]);
+  }
+
+  for (int i = 0; i < hull_size * 2; i += 2) {
+    if (!original_points.contains({hull[i], hull[i + 1]})) {
+      return false;
+    }
+  }
+
+  return true;
+}
 }  // namespace
 
 TEST(shvedova_v_graham_convex_hull_stl, test_pipeline_run) {
   std::vector<double> points = GenSrc(kCount);
   int scan_size = 0;
   std::vector<double> hull(points.size(), 0.0);
+
   auto task_data_stl = std::make_shared<ppc::core::TaskData>();
   task_data_stl->inputs.emplace_back(reinterpret_cast<uint8_t*>(points.data()));
   task_data_stl->inputs_count.emplace_back(points.size());
@@ -37,7 +60,9 @@ TEST(shvedova_v_graham_convex_hull_stl, test_pipeline_run) {
   task_data_stl->outputs_count.emplace_back(1);
   task_data_stl->outputs.emplace_back(reinterpret_cast<uint8_t*>(hull.data()));
   task_data_stl->outputs_count.emplace_back(hull.size());
-  auto test_task_stluential = std::make_shared<shvedova_v_graham_convex_hull_stl::GrahamConvexHullSTL>(task_data_stl);
+
+  auto test_task_stl = std::make_shared<shvedova_v_graham_convex_hull_stl::GrahamConvexHullSTL>(task_data_stl);
+
   auto perf_attr = std::make_shared<ppc::core::PerfAttr>();
   perf_attr->num_running = 10;
   const auto t0 = std::chrono::high_resolution_clock::now();
@@ -46,16 +71,21 @@ TEST(shvedova_v_graham_convex_hull_stl, test_pipeline_run) {
     auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(current_time_point - t0).count();
     return static_cast<double>(duration) * 1e-9;
   };
+
   auto perf_results = std::make_shared<ppc::core::PerfResults>();
-  auto perf_analyzer = std::make_shared<ppc::core::Perf>(test_task_stluential);
+  auto perf_analyzer = std::make_shared<ppc::core::Perf>(test_task_stl);
   perf_analyzer->PipelineRun(perf_attr, perf_results);
+
   ppc::core::Perf::PrintPerfStatistic(perf_results);
+
+  ASSERT_TRUE(VerifyHullBasic(points, hull, scan_size));
 }
 
 TEST(shvedova_v_graham_convex_hull_stl, test_task_run) {
   std::vector<double> points = GenSrc(kCount);
   int scan_size = 0;
   std::vector<double> hull(points.size(), 0.0);
+
   auto task_data_stl = std::make_shared<ppc::core::TaskData>();
   task_data_stl->inputs.emplace_back(reinterpret_cast<uint8_t*>(points.data()));
   task_data_stl->inputs_count.emplace_back(points.size());
@@ -63,7 +93,9 @@ TEST(shvedova_v_graham_convex_hull_stl, test_task_run) {
   task_data_stl->outputs_count.emplace_back(1);
   task_data_stl->outputs.emplace_back(reinterpret_cast<uint8_t*>(hull.data()));
   task_data_stl->outputs_count.emplace_back(hull.size());
-  auto test_task_stluential = std::make_shared<shvedova_v_graham_convex_hull_stl::GrahamConvexHullSTL>(task_data_stl);
+
+  auto test_task_stl = std::make_shared<shvedova_v_graham_convex_hull_stl::GrahamConvexHullSTL>(task_data_stl);
+
   auto perf_attr = std::make_shared<ppc::core::PerfAttr>();
   perf_attr->num_running = 10;
   const auto t0 = std::chrono::high_resolution_clock::now();
@@ -72,8 +104,12 @@ TEST(shvedova_v_graham_convex_hull_stl, test_task_run) {
     auto duration = std::chrono::duration_cast<std::chrono::nanoseconds>(current_time_point - t0).count();
     return static_cast<double>(duration) * 1e-9;
   };
+
   auto perf_results = std::make_shared<ppc::core::PerfResults>();
-  auto perf_analyzer = std::make_shared<ppc::core::Perf>(test_task_stluential);
+  auto perf_analyzer = std::make_shared<ppc::core::Perf>(test_task_stl);
   perf_analyzer->TaskRun(perf_attr, perf_results);
+
   ppc::core::Perf::PrintPerfStatistic(perf_results);
+
+  ASSERT_TRUE(VerifyHullBasic(points, hull, scan_size));
 }
