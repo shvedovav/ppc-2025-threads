@@ -115,9 +115,9 @@ void GrahamConvexHullALL::PerformSort(const Point &pivot) {
         merge(i, j);
       }
     } else {
-      ts.resize(factor);
+      ts.clear();
       for (int j = 0; j < factor; j += 2 * i) {
-        ts[j] = std::thread([&](int k) { merge(i, k); }, j);
+        ts.emplace_back([&](int k) { merge(i, k); }, j);
       }
       std::ranges::for_each(ts, [](auto &t) { t.join(); });
     }
