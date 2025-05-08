@@ -118,8 +118,8 @@ void GrahamConvexHullALL::PerformSort(const Point &pivot) {
       ts.resize(factor);
       for (int j = 0; j < factor; j += 2 * i) {
         ts[j] = std::thread([&](int k) { merge(i, k); }, j);
-        std::ranges::for_each(ts, [](auto &t) { t.join(); });
       }
+      std::ranges::for_each(ts, [](auto &t) { t.join(); });
     }
   }
 }
@@ -170,7 +170,7 @@ bool GrahamConvexHullALL::RunImpl() {
     if (rank_ % (2 * i) == 0) {
       const int secondary = rank_ + i;
       if (secondary < processes) {
-        int size{};
+        int32_t size{};
         MPI_Recv(&size, 1, MPI_INT32_T, secondary, 0, group, MPI_STATUS_IGNORE);
 
         const auto div = procinput_.size();
