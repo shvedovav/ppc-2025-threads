@@ -170,19 +170,19 @@ bool GrahamConvexHullALL::RunImpl() {
     if (rank_ % (2 * i) == 0) {
       const int secondary = rank_ + i;
       if (secondary < processes) {
-        int32_t size{};
-        MPI_Recv(&size, 1, MPI_INT32_T, secondary, 0, group, MPI_STATUS_IGNORE);
+        int32_t sizecomp{};
+        MPI_Recv(&sizecomp, 1, MPI_INT32_T, secondary, 0, group, MPI_STATUS_IGNORE);
 
         const auto div = procinput_.size();
-        procinput_.resize(div + size);
-        MPI_Recv(procinput_.data() + div, size * int(Point{}.size()), MPI_DOUBLE, secondary, 0, group,
+        procinput_.resize(div + sizecomp);
+        MPI_Recv(procinput_.data() + div, sizecomp * int(Point{}.size()), MPI_DOUBLE, secondary, 0, group,
                  MPI_STATUS_IGNORE);
         std::ranges::inplace_merge(procinput_, procinput_.begin() + static_cast<std::int64_t>(div), comp);
       }
     } else if ((rank_ % i) == 0) {
-      const auto size = std::int32_t(procinput_.size());
-      MPI_Send(&size, 1, MPI_INT32_T, rank_ - i, 0, group);
-      MPI_Send(procinput_.data(), size * int(Point{}.size()), MPI_DOUBLE, rank_ - i, 0, group);
+      const auto sizeproc = std::int32_t(procinput_.size());
+      MPI_Send(&sizeproc, 1, MPI_INT32_T, rank_ - i, 0, group);
+      MPI_Send(procinput_.data(), sizeproc * int(Point{}.size()), MPI_DOUBLE, rank_ - i, 0, group);
       break;
     }
   }
