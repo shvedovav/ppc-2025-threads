@@ -1,9 +1,12 @@
 #include <gtest/gtest.h>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <random>
+#include <set>
+#include <utility>
 #include <vector>
 
 #include "../include/ops_all.hpp"
@@ -11,19 +14,38 @@
 #include "core/task/include/task.hpp"
 #include "mpi.h"
 
-constexpr int kCount = 22000;
+constexpr int kCount = 4500000;
 
 namespace {
 std::vector<double> GenSrc(int count) {
   std::vector<double> points;
   points.reserve(count * 2);
   std::mt19937 gen(std::random_device{}());
-  std::uniform_real_distribution<> dis(-2.55, 4.05);
+  std::uniform_real_distribution<> dis(-4.0, 4.0);
   for (int i = 0; i < count; ++i) {
     points.push_back(dis(gen));
     points.push_back(dis(gen));
   }
   return points;
+}
+
+bool VerifyHullBasic(const std::vector<double>& points, const std::vector<double>& hull, int hull_size) {
+  if (hull_size < 3) {
+    return false;
+  }
+
+  std::set<std::pair<double, double>> original_points;
+  for (size_t i = 0; i < points.size(); i += 2) {
+    original_points.emplace(points[i], points[i + 1]);
+  }
+
+  for (int i = 0; i < hull_size * 2; i += 2) {
+    if (!original_points.contains({hull[i], hull[i + 1]})) {
+      return false;
+    }
+  }
+
+  return true;
 }
 }  // namespace
 
@@ -57,6 +79,7 @@ TEST(shvedova_v_graham_convex_hull_all, test_pipeline_run) {
   perf_analyzer->PipelineRun(perf_attr, perf_results);
   if (rank == 0) {
     ppc::core::Perf::PrintPerfStatistic(perf_results);
+    ASSERT_TRUE(VerifyHullBasic(points, hull, scan_size));
   }
 }
 
@@ -90,5 +113,6 @@ TEST(shvedova_v_graham_convex_hull_all, test_task_run) {
   perf_analyzer->TaskRun(perf_attr, perf_results);
   if (rank == 0) {
     ppc::core::Perf::PrintPerfStatistic(perf_results);
+    ASSERT_TRUE(VerifyHullBasic(points, hull, scan_size));
   }
 }

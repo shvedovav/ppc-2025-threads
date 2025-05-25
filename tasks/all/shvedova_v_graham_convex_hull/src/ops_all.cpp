@@ -115,11 +115,11 @@ void GrahamConvexHullALL::PerformSort(const Point &pivot) {
         merge(i, j);
       }
     } else {
-      ts.resize(factor);
+      ts.clear();
       for (int j = 0; j < factor; j += 2 * i) {
-        ts[j] = std::thread([&](int k) { merge(i, k); }, j);
-        std::ranges::for_each(ts, [](auto &t) { t.join(); });
+        ts.emplace_back([&](int k) { merge(i, k); }, j);
       }
+      std::ranges::for_each(ts, [](auto &t) { t.join(); });
     }
   }
 }
@@ -134,7 +134,8 @@ bool GrahamConvexHullALL::RunImpl() {
 
   MPI_Comm group{};
   if (rank_ >= processes) {
-    MPI_Comm_split(MPI_COMM_WORLD, 1, rank_, &group);
+    MPI_Comm_split(MPI_COMM_WORLD, 0, rank_, &group);
+    MPI_Comm_free(&group);
     return true;
   }
   MPI_Comm_split(MPI_COMM_WORLD, 0, rank_, &group);
@@ -170,23 +171,24 @@ bool GrahamConvexHullALL::RunImpl() {
     if (rank_ % (2 * i) == 0) {
       const int secondary = rank_ + i;
       if (secondary < processes) {
-        int size{};
-        MPI_Recv(&size, 1, MPI_INT32_T, secondary, 0, group, MPI_STATUS_IGNORE);
+        int32_t sizecomp{};
+        MPI_Recv(&sizecomp, 1, MPI_INT32_T, secondary, 0, group, MPI_STATUS_IGNORE);
 
         const auto div = procinput_.size();
-        procinput_.resize(div + size);
-        MPI_Recv(procinput_.data() + div, size * int(Point{}.size()), MPI_DOUBLE, secondary, 0, group,
+        procinput_.resize(div + sizecomp);
+        MPI_Recv(procinput_.data() + div, sizecomp * int(Point{}.size()), MPI_DOUBLE, secondary, 0, group,
                  MPI_STATUS_IGNORE);
-        std::ranges::inplace_merge(procinput_, procinput_.begin() + static_cast<std::int64_t>(div),
-                           comp);
+        std::ranges::inplace_merge(procinput_, procinput_.begin() + static_cast<std::int64_t>(div), comp);
       }
     } else if ((rank_ % i) == 0) {
-      const auto size = std::int32_t(procinput_.size());
-      MPI_Send(&size, 1, MPI_INT32_T, rank_ - i, 0, group);
-      MPI_Send(procinput_.data(), size * int(Point{}.size()), MPI_DOUBLE, rank_ - i, 0, group);
+      const auto sizeproc = std::int32_t(procinput_.size());
+      MPI_Send(&sizeproc, 1, MPI_INT32_T, rank_ - i, 0, group);
+      MPI_Send(procinput_.data(), sizeproc * int(Point{}.size()), MPI_DOUBLE, rank_ - i, 0, group);
       break;
     }
   }
+
+  MPI_Comm_free(&group);
 
   if (rank_ == 0) {
     res_.push_back(procinput_[0]);
@@ -242,33 +244,15 @@ bool GrahamConvexHullSequential::PreProcessingImpl() {
   return true;
 }
 
-void GrahamConvexHullSequential::PerformSort() {  // NOLINT(*cognit*)
-  const auto cmp = [](const Point &p0, const Point &p1, const Point &p2) {
-    const auto calc_ang = [](const Point &o, const Point &p) {
-      const auto dx = p[0] - o[0];
-      const auto dy = p[1] - o[1];
-      if (dx == 0. && dy == 0.) {
-        return -1.;
-      }
-      return (dy >= 0) ? (dx >= 0 ? dy / (dx + dy) : 1 - (dx / (-dx + dy)))
-                       : (dx < 0 ? 2 - (dy / (-dx - dy)) : 3 + (dx / (dx - dy)));
-    };
-    const auto ang1 = calc_ang(p0, p1);
-    const auto ang2 = calc_ang(p0, p2);
-    return (ang1 < ang2) || ((ang1 > ang2) ? false
-                                           : (std::pow(p1[0] - p0[0], 2) + std::pow(p1[1] - p0[1], 2) -
-                                                  std::pow(p2[0] - p0[0], 2) - std::pow(p2[1] - p0[1], 2) >
-                                              0));
-  };
-
+void GrahamConvexHullSequential::PerformSort() {
   const auto pivot = *std::ranges::min_element(input_, [](auto &a, auto &b) { return a[1] < b[1]; });
   for (int pt = 0; pt < points_count_; pt++) {
-    const bool ev = pt % 2 == 0;
-    const int shift = ev ? 0 : -1;
-    const int revshift = ev ? -1 : 0;
+    const bool even_step = pt % 2 == 0;
+    const int shift = even_step ? 0 : -1;
+    const int revshift = even_step ? -1 : 0;
     for (int i = 1; i < points_count_ + shift; i += 2) {
-      if (cmp(pivot, input_[i - shift], input_[i + revshift])) {
-        std::swap(input_[i], input_[i - (ev ? 1 : -1)]);
+      if (ComparePoints(pivot, input_[i - shift], input_[i + revshift])) {
+        std::swap(input_[i], input_[i - (even_step ? 1 : -1)]);
       }
     }
   }
